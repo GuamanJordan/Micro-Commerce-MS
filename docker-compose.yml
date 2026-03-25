@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # Bases de Datos
   mongodb:
     image: mongo:6
     container_name: nexacommerce-mongo
@@ -8,6 +9,8 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    networks:
+      - nexa-network
 
   mysql:
     image: mysql:8
@@ -19,6 +22,124 @@ services:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    networks:
+      - nexa-network
+
+  # Microservicios Backend
+  users-service:
+    build: ./services/users-service
+    container_name: nexacommerce-users
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./services/users-service/.env
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/nexacommerce_users
+    networks:
+      - nexa-network
+    depends_on:
+      - mongodb
+
+  products-service:
+    build: ./services/products-service
+    container_name: nexacommerce-products
+    ports:
+      - "3002:3002"
+    env_file:
+      - ./services/products-service/.env
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/nexacommerce_products
+    networks:
+      - nexa-network
+    depends_on:
+      - mongodb
+
+  cart-service:
+    build: ./services/cart-service
+    container_name: nexacommerce-cart
+    ports:
+      - "3003:3003"
+    env_file:
+      - ./services/cart-service/.env
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/nexacommerce_cart
+      - PRODUCTS_SERVICE_URL=http://products-service:3002
+    networks:
+      - nexa-network
+    depends_on:
+      - mongodb
+      - products-service
+
+  orders-service:
+    build: ./services/orders-service
+    container_name: nexacommerce-orders
+    ports:
+      - "3004:3004"
+    env_file:
+      - ./services/orders-service/.env
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/nexacommerce_orders
+      - CART_SERVICE_URL=http://cart-service:3003
+      - PRODUCTS_SERVICE_URL=http://products-service:3002
+      - REPORTS_SERVICE_URL=http://reports-service:3005
+    networks:
+      - nexa-network
+    depends_on:
+      - mongodb
+
+  reports-service:
+    build: ./services/reports-service
+    container_name: nexacommerce-reports
+    ports:
+      - "3005:3005"
+    env_file:
+      - ./services/reports-service/.env
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=root123
+      - MYSQL_DATABASE=nexacommerce_reports
+    networks:
+      - nexa-network
+    depends_on:
+      - mysql
+
+  # API Gateway
+  api-gateway:
+    build: ./gateway
+    container_name: nexacommerce-gateway
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./gateway/.env
+    environment:
+      - USERS_SERVICE_URL=http://users-service:3001
+      - PRODUCTS_SERVICE_URL=http://products-service:3002
+      - CART_SERVICE_URL=http://cart-service:3003
+      - ORDERS_SERVICE_URL=http://orders-service:3004
+      - REPORTS_SERVICE_URL=http://reports-service:3005
+    networks:
+      - nexa-network
+    depends_on:
+      - users-service
+      - products-service
+      - cart-service
+      - orders-service
+      - reports-service
+
+  # Frontend Angular/Vue
+  frontend:
+    build: ./frontend
+    container_name: nexacommerce-frontend
+    ports:
+      - "80:80"
+    networks:
+      - nexa-network
+
+networks:
+  nexa-network:
+    driver: bridge
 
 volumes:
   mongo_data:
